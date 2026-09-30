@@ -1,6 +1,6 @@
-import { applyCors, parseBody, readString, type ApiRequest, type ApiResponse } from './_lib/http'
-import { getServiceClient } from './_lib/supabase'
-import type { Conversation, Lead, LeadStatus, Message } from './_lib/types'
+import { applyCors, parseBody, readString, type ApiRequest, type ApiResponse } from './_lib/http.js'
+import { getServiceClient } from './_lib/supabase.js'
+import type { Conversation, Lead, LeadStatus, Message } from './_lib/types.js'
 
 const STATUSES: LeadStatus[] = ['new', 'in_progress', 'converted', 'dismissed']
 

@@ -1,5 +1,6 @@
+/// <reference types="node" />
 import { GoogleGenAI, Type } from '@google/genai'
-import type { AgentResult, CapturedLead, Message, Tenant } from './types'
+import type { AgentResult, CapturedLead, Message, Tenant } from './types.js'
 
 const HUMAN_REQUEST_PATTERN =
   /(נציג|בנאדם|בן אדם|אדם אמיתי|נציג אנושי|שיחה עם אדם|רוצה שיחה)/u

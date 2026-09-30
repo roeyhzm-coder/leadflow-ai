@@ -1,13 +1,13 @@
-import { customerRequestsHuman, runSalesAgent } from './_lib/gemini'
-import { applyCors, parseBody, type ApiRequest, type ApiResponse } from './_lib/http'
-import { getServiceClient, normalizePhone, phonesMatch } from './_lib/supabase'
+import { customerRequestsHuman, runSalesAgent } from './_lib/gemini.js'
+import { applyCors, parseBody, type ApiRequest, type ApiResponse } from './_lib/http.js'
+import { getServiceClient, normalizePhone, phonesMatch } from './_lib/supabase.js'
 import type {
   CapturedLead,
   Conversation,
   GreenApiWebhook,
   Message,
   Tenant,
-} from './_lib/types'
+} from './_lib/types.js'
 import {
   downloadWhatsAppFile,
   extractIncomingText,
@@ -20,7 +20,7 @@ import {
   resolveCustomerName,
   resolveSenderPhone,
   sendWhatsAppText,
-} from './_lib/whatsapp'
+} from './_lib/whatsapp.js'
 
 function json(res: ApiResponse, status: number, body: unknown): void {
   res.status(status).json(body)

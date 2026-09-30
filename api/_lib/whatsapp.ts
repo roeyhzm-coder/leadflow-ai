@@ -1,5 +1,6 @@
-import { normalizePhone, phonesMatch, toChatId } from './supabase'
-import type { GreenApiWebhook, Tenant } from './types'
+/// <reference types="node" />
+import { normalizePhone, phonesMatch, toChatId } from './supabase.js'
+import type { GreenApiWebhook, Tenant } from './types.js'
 
 function apiRoot(): { base: string; token: string } {
   const base = (process.env.WHATSAPP_API_URL ?? '').replace(/\/$/, '')

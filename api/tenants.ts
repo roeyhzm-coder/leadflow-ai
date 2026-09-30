@@ -1,6 +1,6 @@
-import { applyCors, parseBody, readString, type ApiRequest, type ApiResponse } from './_lib/http'
-import { getServiceClient } from './_lib/supabase'
-import type { Tenant } from './_lib/types'
+import { applyCors, parseBody, readString, type ApiRequest, type ApiResponse } from './_lib/http.js'
+import { getServiceClient } from './_lib/supabase.js'
+import type { Tenant } from './_lib/types.js'
 
 function json(res: ApiResponse, status: number, body: unknown): void {
   res.status(status).json(body)
