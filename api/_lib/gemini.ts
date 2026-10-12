@@ -14,7 +14,7 @@ function getClient(): GoogleGenAI {
 }
 
 function modelName(): string {
-  return process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
+  return process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'
 }
 
 export function customerRequestsHuman(text: string): boolean {

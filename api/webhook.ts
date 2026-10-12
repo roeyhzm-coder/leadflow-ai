@@ -326,12 +326,22 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       await insertMessage(conversation.id, 'bot', 'text', ack, {
         kind: 'human_handoff',
       })
-      await sendWhatsAppText(tenant, chatPhone, ack)
+      let sendError: string | null = null
+      try {
+        await sendWhatsAppText(tenant, chatPhone, ack)
+      } catch (error) {
+        sendError = error instanceof Error ? error.message : 'WhatsApp send failed'
+        console.error('WhatsApp send failed during human handoff', error)
+      }
       await notifyOwner(
         tenant,
         `🙋 לקוח ביקש נציג אנושי\nעסק: ${tenant.business_name}\nשם: ${senderName || 'לא ידוע'}\nטלפון: ${chatPhone}\nהודעה: ${incomingText}`,
       )
-      json(res, 200, { ok: true, handed_off: true })
+      json(res, 200, {
+        ok: true,
+        handed_off: true,
+        ...(sendError ? { send_error: sendError } : {}),
+      })
       return
     }
 
@@ -356,7 +366,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     await insertMessage(conversation.id, 'bot', 'text', agent.reply, {
       kind: 'gemini',
     })
-    await sendWhatsAppText(tenant, chatPhone, agent.reply)
+
+    let sendError: string | null = null
+    try {
+      await sendWhatsAppText(tenant, chatPhone, agent.reply)
+    } catch (error) {
+      sendError = error instanceof Error ? error.message : 'WhatsApp send failed'
+      console.error('WhatsApp send failed after bot reply', error)
+    }
 
     if (agent.lead) {
       await upsertLead(tenant, conversation, agent.lead)
@@ -366,7 +383,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       )
     }
 
-    json(res, 200, { ok: true, replied: true, lead: Boolean(agent.lead) })
+    json(res, 200, {
+      ok: true,
+      replied: true,
+      lead: Boolean(agent.lead),
+      ...(sendError ? { send_error: sendError } : {}),
+    })
   } catch (error) {
     console.error('webhook failed', error)
     json(res, 500, {

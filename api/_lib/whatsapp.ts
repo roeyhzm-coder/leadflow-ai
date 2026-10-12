@@ -2,9 +2,25 @@
 import { normalizePhone, phonesMatch, toChatId } from './supabase.js'
 import type { GreenApiWebhook, Tenant } from './types.js'
 
+function firstEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key]?.trim()
+    if (value) return value
+  }
+  return ''
+}
+
 function apiRoot(): { base: string; token: string } {
-  const base = (process.env.WHATSAPP_API_URL ?? '').replace(/\/$/, '')
-  const token = process.env.WHATSAPP_API_TOKEN ?? ''
+  const base = firstEnv(
+    'WHATSAPP_API_URL',
+    'GREEN_API_URL',
+    'VITE_WHATSAPP_API_URL',
+  ).replace(/\/$/, '')
+  const token = firstEnv(
+    'WHATSAPP_API_TOKEN',
+    'GREEN_API_TOKEN',
+    'VITE_WHATSAPP_API_TOKEN',
+  )
   if (!base || !token) {
     throw new Error(
       'Missing WhatsApp configuration. Set WHATSAPP_API_URL and WHATSAPP_API_TOKEN.',
