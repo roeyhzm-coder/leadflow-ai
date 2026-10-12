@@ -2,6 +2,10 @@
 import { normalizePhone, phonesMatch, toChatId } from './supabase.js'
 import type { GreenApiWebhook, Tenant } from './types.js'
 
+/** Canonical Green API host for instance 710722751571 — ignores bad Vercel dashboard values. */
+export const DEFAULT_GREEN_API_HOST = 'https://7107.api.greenapi.com'
+export const DEFAULT_WHATSAPP_INSTANCE_ID = '710722751571'
+
 function firstEnv(...keys: string[]): string {
   for (const key of keys) {
     const value = process.env[key]?.trim()
@@ -10,21 +14,33 @@ function firstEnv(...keys: string[]): string {
   return ''
 }
 
+/**
+ * Resolve Green API host. Falls back to the hardcoded production host when
+ * WHATSAPP_API_URL is undefined, empty, or contains a hyphen (e.g. green-api.com),
+ * so a misconfigured Vercel dashboard variable cannot break outbound sends.
+ */
+export function resolveGreenApiHost(
+  configured: string | undefined = process.env.WHATSAPP_API_URL,
+): string {
+  const candidate = (configured ?? '').trim().replace(/\/$/, '')
+  if (!candidate || candidate.includes('-')) {
+    return DEFAULT_GREEN_API_HOST
+  }
+  return candidate
+}
+
 function apiRoot(): { base: string; token: string } {
-  const base = firstEnv(
-    'WHATSAPP_API_URL',
-    'GREEN_API_URL',
-    'VITE_WHATSAPP_API_URL',
-  ).replace(/\/$/, '')
+  const base = resolveGreenApiHost(
+    firstEnv('WHATSAPP_API_URL', 'GREEN_API_URL', 'VITE_WHATSAPP_API_URL') ||
+      undefined,
+  )
   const token = firstEnv(
     'WHATSAPP_API_TOKEN',
     'GREEN_API_TOKEN',
     'VITE_WHATSAPP_API_TOKEN',
   )
-  if (!base || !token) {
-    throw new Error(
-      'Missing WhatsApp configuration. Set WHATSAPP_API_URL and WHATSAPP_API_TOKEN.',
-    )
+  if (!token) {
+    throw new Error('Missing WhatsApp configuration. Set WHATSAPP_API_TOKEN.')
   }
   return { base, token }
 }
