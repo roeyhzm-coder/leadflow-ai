@@ -158,16 +158,37 @@ export async function runSalesAgent(options: {
     },
   ]
 
-  const response = await ai.models.generateContent({
-    model: modelName(),
-    contents,
-    config: {
-      systemInstruction: instructionFor(options.tenant),
-      responseMimeType: 'application/json',
-      responseSchema,
-      temperature: 0.4,
-    },
-  })
+  const maxAttempts = 3
+  let lastError: unknown
 
-  return parseAgentJson(response.text ?? '', options.customerPhone)
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName(),
+        contents,
+        config: {
+          systemInstruction: instructionFor(options.tenant),
+          responseMimeType: 'application/json',
+          responseSchema,
+          temperature: 0.4,
+        },
+      })
+      return parseAgentJson(response.text ?? '', options.customerPhone)
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      const retryable =
+        /UNAVAILABLE|high demand|RESOURCE_EXHAUSTED|429|503|500/i.test(message)
+      if (!retryable || attempt === maxAttempts) break
+      await new Promise((resolve) => setTimeout(resolve, attempt * 800))
+    }
+  }
+
+  // Keep the webhook alive during transient model outages.
+  console.error('Gemini sales agent failed after retries', lastError)
+  return {
+    reply:
+      'תודה שפניתם! קיבלנו את ההודעה ונחזור אליכם בהקדם עם פרטים על שטיפה, פוליש וציפוי קרמי.',
+    lead: null,
+  }
 }
