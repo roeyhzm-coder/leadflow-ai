@@ -59,6 +59,7 @@ create table if not exists public.leads (
 create index if not exists conversations_tenant_id_idx on public.conversations (tenant_id);
 create index if not exists conversations_last_message_at_idx on public.conversations (last_message_at desc);
 create index if not exists messages_conversation_id_idx on public.messages (conversation_id, created_at);
+create index if not exists messages_wa_id_idx on public.messages ((raw_payload->>'idMessage'));
 create index if not exists leads_tenant_id_idx on public.leads (tenant_id, created_at desc);
 create index if not exists leads_status_idx on public.leads (status);
 create index if not exists tenants_whatsapp_instance_id_idx on public.tenants (whatsapp_instance_id);

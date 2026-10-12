@@ -63,6 +63,30 @@ async function findTenant(payload: GreenApiWebhook): Promise<Tenant | null> {
   )
 }
 
+/** Green API message id, used to drop webhook retries that were already handled. */
+function messageIdOf(payload: GreenApiWebhook): string {
+  return payload.idMessage?.trim() ?? ''
+}
+
+async function alreadyProcessed(idMessage: string): Promise<boolean> {
+  if (!idMessage) return false
+  const { data, error } = await getServiceClient()
+    .from('messages')
+    .select('id')
+    .eq('raw_payload->>idMessage', idMessage)
+    .limit(1)
+  if (error) throw error
+  return (data?.length ?? 0) > 0
+}
+
+/** A message sent from the instance's own WhatsApp number must never reach the AI. */
+function isSelfMessage(tenant: Tenant, payload: GreenApiWebhook, senderPhone: string): boolean {
+  return (
+    phonesMatch(senderPhone, recipientPhone(payload)) ||
+    phonesMatch(senderPhone, tenant.whatsapp_phone)
+  )
+}
+
 async function getOrCreateConversation(
   tenant: Tenant,
   customerPhone: string,
@@ -244,11 +268,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
   const payload = parseBody<GreenApiWebhook>(req)
   const typeWebhook = payload.typeWebhook ?? ''
 
-  if (typeWebhook === 'outgoingAPIMessageReceived') {
-    json(res, 200, { ok: true, ignored: 'bot_echo' })
-    return
-  }
-
+  // Only patient messages run the AI. Staff replies sent from the clinic phone
+  // (outgoingMessageReceived) are kept solely to mute the bot; everything else,
+  // including the bot's own API sends (outgoingAPIMessageReceived), is dropped.
   if (
     typeWebhook !== 'incomingMessageReceived' &&
     typeWebhook !== 'outgoingMessageReceived'
@@ -269,6 +291,17 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     const senderName = resolveCustomerName(payload)
     if (!chatPhone) {
       json(res, 200, { ok: true, ignored: 'missing_chat' })
+      return
+    }
+
+    if (typeWebhook === 'incomingMessageReceived' && isSelfMessage(tenant, payload, senderPhone)) {
+      json(res, 200, { ok: true, ignored: 'self_message' })
+      return
+    }
+
+    const idMessage = messageIdOf(payload)
+    if (await alreadyProcessed(idMessage)) {
+      json(res, 200, { ok: true, ignored: 'duplicate', idMessage })
       return
     }
 
