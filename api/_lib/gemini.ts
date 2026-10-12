@@ -14,9 +14,14 @@ function getClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey })
 }
 
+// gemini-3.5-flash-lite benchmarked at ~1.2-2s vs ~4s (plus 503s) for gemini-3.8-flash.
+// gemini-1.5-flash is retired (404) and cannot be used.
 function modelName(): string {
-  return process.env.GEMINI_MODEL ?? 'gemini-3.8-flash'
+  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite'
 }
+
+/** Per-attempt cap so an overloaded model cannot hang the webhook. */
+const REQUEST_TIMEOUT_MS = 10_000
 
 export function customerRequestsHuman(text: string): boolean {
   const trimmed = text.trim()
@@ -171,7 +176,8 @@ export async function runSalesAgent(options: {
           systemInstruction: instructionFor(options.tenant),
           responseMimeType: 'application/json',
           responseSchema,
-          temperature: 0.4,
+          temperature: 0.1,
+          abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         },
       })
       return parseAgentJson(response.text ?? '', options.customerPhone)
@@ -188,8 +194,7 @@ export async function runSalesAgent(options: {
   // Keep the webhook alive during transient model outages.
   console.error('Gemini sales agent failed after retries', lastError)
   return {
-    reply:
-      'תודה שפניתם! קיבלנו את ההודעה ונחזור אליכם בהקדם עם פרטים על שטיפה, פוליש וציפוי קרמי.',
+    reply: 'תודה שפניתם! קיבלנו את ההודעה ונציג יחזור אליכם בהקדם.',
     lead: null,
   }
 }
