@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
-import { DENTAL_CLINIC_GOAL, DENTAL_CLINIC_PROMPT } from '../api/_lib/prompts.js'
+import { DENTAL_CLINIC_GOAL, DENTAL_CLINIC_NAME, DENTAL_CLINIC_PROMPT } from '../api/_lib/prompts.js'
 
 function loadEnv(filePath: string): void {
   let raw: string
@@ -38,7 +38,7 @@ loadEnv(resolve(process.cwd(), '.env'))
 loadEnv(resolve(process.cwd(), '.env.local'))
 
 const DEMO_TENANT = {
-  business_name: 'דנטל קליניק',
+  business_name: DENTAL_CLINIC_NAME,
   whatsapp_instance_id: '710722751571',
   system_prompt: DENTAL_CLINIC_PROMPT,
   target_goal: DENTAL_CLINIC_GOAL,
