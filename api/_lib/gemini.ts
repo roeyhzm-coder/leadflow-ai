@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { GoogleGenAI, Type } from '@google/genai'
+import { DENTAL_CLINIC_PROMPT } from './prompts.js'
 import type { AgentResult, CapturedLead, Message, Tenant } from './types.js'
 
 const HUMAN_REQUEST_PATTERN =
@@ -45,7 +46,7 @@ function historyToContents(history: Message[]): Array<{
 function instructionFor(tenant: Tenant): string {
   const business = tenant.business_name
   const goal = tenant.target_goal ?? 'הסמכת ליד וקביעת שיחה/ביקור'
-  const custom = tenant.system_prompt?.trim() ?? ''
+  const custom = tenant.system_prompt?.trim() || DENTAL_CLINIC_PROMPT
 
   return `${custom}
 

@@ -1,10 +1,11 @@
 /**
- * Upserts the demo detailing tenant into Supabase using the service role key.
+ * Upserts the demo dental clinic tenant into Supabase using the service role key.
  * Usage: npx tsx scripts/setup-tenant.ts
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { DENTAL_CLINIC_GOAL, DENTAL_CLINIC_PROMPT } from '../api/_lib/prompts.js'
 
 function loadEnv(filePath: string): void {
   let raw: string
@@ -37,10 +38,10 @@ loadEnv(resolve(process.cwd(), '.env'))
 loadEnv(resolve(process.cwd(), '.env.local'))
 
 const DEMO_TENANT = {
-  business_name: 'דמו דיטיילינג',
+  business_name: 'דנטל קליניק',
   whatsapp_instance_id: '710722751571',
-  system_prompt:
-    'אתה נציג שירות וקביעת תורים בוואטסאפ עבור סטודיו דיטיילינג לרכב. ענה קצר, בנימוס, הסבר על שירותים (שטיפה, פוליש, ציפוי קרמי) והצע לקבוע תור.',
+  system_prompt: DENTAL_CLINIC_PROMPT,
+  target_goal: DENTAL_CLINIC_GOAL,
   is_active: true,
 } as const
 
@@ -77,10 +78,11 @@ async function main(): Promise<void> {
       .update({
         business_name: DEMO_TENANT.business_name,
         system_prompt: DEMO_TENANT.system_prompt,
+        target_goal: DEMO_TENANT.target_goal,
         is_active: DEMO_TENANT.is_active,
       })
       .eq('id', existing.id)
-      .select('id, business_name, whatsapp_instance_id, system_prompt, is_active, created_at')
+      .select('id, business_name, whatsapp_instance_id, system_prompt, target_goal, is_active, created_at')
       .single()
 
     if (updateError) {
@@ -98,9 +100,10 @@ async function main(): Promise<void> {
       business_name: DEMO_TENANT.business_name,
       whatsapp_instance_id: DEMO_TENANT.whatsapp_instance_id,
       system_prompt: DEMO_TENANT.system_prompt,
+      target_goal: DEMO_TENANT.target_goal,
       is_active: DEMO_TENANT.is_active,
     })
-    .select('id, business_name, whatsapp_instance_id, system_prompt, is_active, created_at')
+    .select('id, business_name, whatsapp_instance_id, system_prompt, target_goal, is_active, created_at')
     .single()
 
   if (insertError) {
