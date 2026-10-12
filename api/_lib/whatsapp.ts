@@ -15,24 +15,28 @@ function firstEnv(...keys: string[]): string {
 }
 
 /**
- * Resolve Green API host. Falls back to the hardcoded production host when
- * WHATSAPP_API_URL is undefined, empty, or contains a hyphen (e.g. green-api.com),
- * so a misconfigured Vercel dashboard variable cannot break outbound sends.
+ * Resolve Green API host from the instance ID. Green API serves each instance
+ * only from the host named after the first 4 digits of its ID
+ * (710722751571 -> 7107.api.greenapi.com); any other host answers 403. A
+ * WHATSAPP_API_URL value is honored only when it matches that host, so a stale
+ * or misconfigured Vercel dashboard variable cannot break outbound sends.
  */
 export function resolveGreenApiHost(
   configured: string | undefined = process.env.WHATSAPP_API_URL,
+  instanceId: string = DEFAULT_WHATSAPP_INSTANCE_ID,
 ): string {
+  const expected = /^\d{4}/.test(instanceId)
+    ? `https://${instanceId.slice(0, 4)}.api.greenapi.com`
+    : DEFAULT_GREEN_API_HOST
   const candidate = (configured ?? '').trim().replace(/\/$/, '')
-  if (!candidate || candidate.includes('-')) {
-    return DEFAULT_GREEN_API_HOST
-  }
-  return candidate
+  return candidate === expected ? candidate : expected
 }
 
-function apiRoot(): { base: string; token: string } {
+function apiRoot(instanceId?: string): { base: string; token: string } {
   const base = resolveGreenApiHost(
     firstEnv('WHATSAPP_API_URL', 'GREEN_API_URL', 'VITE_WHATSAPP_API_URL') ||
       undefined,
+    instanceId,
   )
   const token = firstEnv(
     'WHATSAPP_API_TOKEN',
@@ -46,7 +50,7 @@ function apiRoot(): { base: string; token: string } {
 }
 
 function instanceUrl(instanceId: string, method: string): string {
-  const { base, token } = apiRoot()
+  const { base, token } = apiRoot(instanceId)
   return `${base}/waInstance${instanceId}/${method}/${token}`
 }
 
