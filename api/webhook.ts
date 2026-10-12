@@ -279,6 +279,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     return
   }
 
+  const chatPhone = resolveChatPhone(payload)
+  const senderPhone = resolveSenderPhone(payload)
+
+  // When set, only this number is handled; personal contacts never reach Supabase or Gemini.
+  const whitelist = process.env.WHITELIST_SENDER_PHONE?.trim()
+  if (whitelist && !phonesMatch(whitelist, senderPhone) && !phonesMatch(whitelist, chatPhone)) {
+    json(res, 200, { ok: true, ignored: 'not_whitelisted', senderPhone })
+    return
+  }
+
   try {
     const tenant = await findTenant(payload)
     if (!tenant) {
@@ -286,8 +296,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       return
     }
 
-    const chatPhone = resolveChatPhone(payload)
-    const senderPhone = resolveSenderPhone(payload)
     const senderName = resolveCustomerName(payload)
     if (!chatPhone) {
       json(res, 200, { ok: true, ignored: 'missing_chat' })
