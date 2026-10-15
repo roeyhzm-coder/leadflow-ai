@@ -13,9 +13,24 @@ export type ApiResponse = {
   end: () => void
 }
 
-export function applyCors(res: ApiResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,OPTIONS')
+function allowedOrigins(): string[] {
+  return (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter((origin) => origin.length > 0)
+}
+
+/**
+ * Cross-origin access only for origins in ALLOWED_ORIGINS (comma-separated); never `*`.
+ * The dashboard calls /api same-origin and server-to-server webhooks send no Origin,
+ * so neither needs an allowlist entry.
+ */
+export function applyCors(req: ApiRequest, res: ApiResponse): void {
+  res.setHeader('Vary', 'Origin')
+  const origin = readString(req.headers.origin)
+  if (!origin || !allowedOrigins().includes(origin)) return
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,PUT,DELETE,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 }
 

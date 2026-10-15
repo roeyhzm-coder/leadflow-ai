@@ -13,7 +13,7 @@ function isLeadStatus(value: unknown): value is LeadStatus {
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
-  applyCors(res)
+  applyCors(req, res)
 
   if (req.method === 'OPTIONS') {
     json(res, 200, { ok: true })

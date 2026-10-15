@@ -1,5 +1,19 @@
+import { timingSafeEqual } from 'node:crypto'
 import { customerRequestsHuman, runSalesAgent } from './_lib/gemini.js'
-import { applyCors, parseBody, type ApiRequest, type ApiResponse } from './_lib/http.js'
+import {
+  applyCors,
+  parseBody,
+  readString,
+  type ApiRequest,
+  type ApiResponse,
+} from './_lib/http.js'
+import {
+  consumeRateLimit,
+  PAID_API_RATE_LIMIT,
+  PAID_API_WINDOW_SECONDS,
+  RateLimiterUnavailableError,
+  type RateLimitResult,
+} from './_lib/rate-limit.js'
 import { getServiceClient, normalizePhone, phonesMatch } from './_lib/supabase.js'
 import type {
   CapturedLead,
@@ -24,6 +38,38 @@ import {
 
 function json(res: ApiResponse, status: number, body: unknown): void {
   res.status(status).json(body)
+}
+
+/**
+ * Tenant-wide ceiling on paid replies. The webhook is unauthenticated unless
+ * GREEN_API_WEBHOOK_TOKEN is set, so per-phone limits alone can be dodged by
+ * spoofing many numbers; this caps total Gemini/WhatsApp spend per tenant.
+ */
+const TENANT_RATE_LIMIT = 60
+
+/**
+ * Opt-in shared-secret check: set GREEN_API_WEBHOOK_TOKEN to the instance's
+ * webhookUrlToken (Green API console) and Green API's Authorization header must match.
+ */
+function isAuthorizedWebhook(req: ApiRequest): boolean {
+  const expected = process.env.GREEN_API_WEBHOOK_TOKEN?.trim()
+  if (!expected) return true
+  const header = readString(req.headers.authorization)?.trim() ?? ''
+  const provided = header.replace(/^(Bearer|Basic)\s+/i, '')
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/** Per-customer limit first, then the tenant ceiling; both must pass before any paid call. */
+async function consumePaidReplyBudget(tenant: Tenant, chatPhone: string): Promise<RateLimitResult> {
+  const perCustomer = await consumeRateLimit(
+    `webhook:${tenant.id}:${chatPhone}`,
+    PAID_API_RATE_LIMIT,
+    PAID_API_WINDOW_SECONDS,
+  )
+  if (!perCustomer.allowed) return perCustomer
+  return consumeRateLimit(`webhook:${tenant.id}`, TENANT_RATE_LIMIT, PAID_API_WINDOW_SECONDS)
 }
 
 function isMuted(conversation: Conversation): boolean {
@@ -248,7 +294,7 @@ async function maybeDownloadAudio(
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
-  applyCors(res)
+  applyCors(req, res)
 
   if (req.method === 'OPTIONS') {
     json(res, 200, { ok: true })
@@ -262,6 +308,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
 
   if (req.method !== 'POST') {
     json(res, 405, { error: 'Method not allowed' })
+    return
+  }
+
+  if (!isAuthorizedWebhook(req)) {
+    json(res, 401, { error: 'Unauthorized' })
     return
   }
 
@@ -360,6 +411,19 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       return
     }
 
+    // The customer message is already stored, so a throttled request loses no data;
+    // a Green API retry of it is dropped by the duplicate check above.
+    const budget = await consumePaidReplyBudget(tenant, chatPhone)
+    if (!budget.allowed) {
+      res.setHeader('Retry-After', String(budget.retryAfterSeconds))
+      json(res, 429, {
+        ok: false,
+        error: 'Too many requests',
+        retryAfter: budget.retryAfterSeconds,
+      })
+      return
+    }
+
     if (customerRequestsHuman(incomingText)) {
       await muteForHumanRequest(conversation.id)
       const ack =
@@ -431,6 +495,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       ...(sendError ? { send_error: sendError } : {}),
     })
   } catch (error) {
+    if (error instanceof RateLimiterUnavailableError) {
+      // Fail closed: never call Gemini/WhatsApp when spend cannot be bounded.
+      console.error('rate limiter unavailable', error)
+      res.setHeader('Retry-After', String(PAID_API_WINDOW_SECONDS))
+      json(res, 503, { ok: false, error: 'Service temporarily unavailable' })
+      return
+    }
     console.error('webhook failed', error)
     json(res, 500, {
       ok: false,

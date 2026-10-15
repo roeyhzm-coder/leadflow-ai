@@ -5,7 +5,7 @@ Multi-tenant WhatsApp AI sales and lead capture dashboard. React + Vite frontend
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in keys.
-2. Run `supabase/schema.sql` in the Supabase SQL editor.
+2. Run `supabase/schema.sql`, then `supabase/rate-limit.sql`, in the Supabase SQL editor (the webhook returns 503 until the rate limiter exists).
 3. Point your Green API webhook to `https://<your-domain>/api/webhook`.
 4. `npm install` then `npm run dev` for the dashboard, or deploy to Vercel.
 

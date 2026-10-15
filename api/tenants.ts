@@ -7,7 +7,7 @@ function json(res: ApiResponse, status: number, body: unknown): void {
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
-  applyCors(res)
+  applyCors(req, res)
 
   if (req.method === 'OPTIONS') {
     json(res, 200, { ok: true })
