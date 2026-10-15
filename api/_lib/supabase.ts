@@ -15,11 +15,7 @@ export function getServiceClient(): SupabaseClient {
   if (cached) return cached
 
   const url = firstEnv('SUPABASE_URL', 'VITE_SUPABASE_URL')
-  const key = firstEnv(
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'VITE_SUPABASE_SERVICE_ROLE_KEY',
-    'VITE_SUPABASE_ANON_KEY',
-  )
+  const key = firstEnv('SUPABASE_SERVICE_ROLE_KEY')
 
   if (!url || !key) {
     throw new Error(
