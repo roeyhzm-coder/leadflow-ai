@@ -142,6 +142,32 @@ export function resolveCustomerName(payload: GreenApiWebhook): string {
   ).trim()
 }
 
+/**
+ * Numbers from ALLOWED_TEST_NUMBERS (comma-separated), normalized to 972XXXXXXXXX.
+ * Returns null when unset, empty or "*", meaning every sender is allowed.
+ */
+export function allowedTestNumbers(
+  raw: string | undefined = process.env.ALLOWED_TEST_NUMBERS,
+): ReadonlySet<string> | null {
+  const value = raw?.trim() ?? ''
+  if (!value || value === '*') return null
+  const numbers = value
+    .split(',')
+    .map((entry) => normalizePhone(entry))
+    .filter((entry) => entry.length > 0)
+  return numbers.length > 0 ? new Set(numbers) : null
+}
+
+/** True when no allowlist is configured or any of the given phones is on it. */
+export function isAllowedTestSender(...phones: Array<string | null | undefined>): boolean {
+  const allowed = allowedTestNumbers()
+  if (!allowed) return true
+  return phones.some((phone) => {
+    const normalized = normalizePhone(phone)
+    return normalized.length > 0 && allowed.has(normalized)
+  })
+}
+
 export function isFromOwner(tenant: Tenant, senderPhone: string): boolean {
   return phonesMatch(tenant.owner_phone, senderPhone)
 }

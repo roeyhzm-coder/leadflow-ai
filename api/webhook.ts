@@ -28,6 +28,7 @@ import {
   instanceIdOf,
   isAudioMessage,
   isFromOwner,
+  isAllowedTestSender,
   isIncomingCustomerMessage,
   recipientPhone,
   resolveChatPhone,
@@ -333,9 +334,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
   const chatPhone = resolveChatPhone(payload)
   const senderPhone = resolveSenderPhone(payload)
 
-  // When set, only this number is handled; personal contacts never reach Supabase or Gemini.
-  const whitelist = process.env.WHITELIST_SENDER_PHONE?.trim()
-  if (whitelist && !phonesMatch(whitelist, senderPhone) && !phonesMatch(whitelist, chatPhone)) {
+  // ALLOWED_TEST_NUMBERS restricts the bot to listed numbers; personal contacts
+  // never reach Supabase or Gemini. Unset, empty or "*" answers everyone.
+  if (!isAllowedTestSender(senderPhone, chatPhone)) {
+    console.info('webhook skipped: sender not in ALLOWED_TEST_NUMBERS', {
+      typeWebhook,
+      senderPhone,
+      chatPhone,
+    })
     json(res, 200, { ok: true, ignored: 'not_whitelisted', senderPhone })
     return
   }

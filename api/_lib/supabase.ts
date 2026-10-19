@@ -34,18 +34,24 @@ export function digitsOnly(value: string | null | undefined): string {
 }
 
 export function normalizePhone(value: string | null | undefined): string {
-  let digits = digitsOnly(value)
+  // Drop the WhatsApp JID suffix first so a device suffix ("972…:12@c.us") adds no digits.
+  let digits = digitsOnly((value ?? '').replace(/(:\d+)?@[a-z.]+$/i, ''))
   if (digits.startsWith('00')) digits = digits.slice(2)
+  // Israeli formats: 05XXXXXXXX (local), 5XXXXXXXX (no trunk 0), 9720XXXXXXXXX (country code + trunk 0).
   if (digits.startsWith('0') && digits.length === 10) {
     digits = `972${digits.slice(1)}`
+  } else if (digits.startsWith('5') && digits.length === 9) {
+    digits = `972${digits}`
+  } else if (digits.startsWith('9720') && digits.length === 13) {
+    digits = `972${digits.slice(4)}`
   }
   return digits
 }
 
 export function toChatId(phone: string): string {
-  const normalized = normalizePhone(phone)
-  if (normalized.includes('@')) return phone
-  return `${normalized}@c.us`
+  // Group / already-qualified chat ids pass through untouched.
+  if (/@g\.us$/i.test(phone.trim())) return phone.trim()
+  return `${normalizePhone(phone)}@c.us`
 }
 
 export function phoneFromChatId(chatId: string): string {
