@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "tsx scripts/test-guardrails.ts && tsx scripts/test-lead-capture.ts",
+    "test:live": "tsx scripts/test-guardrails.ts --live && tsx scripts/test-lead-capture.ts --live",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -26,6 +28,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   }

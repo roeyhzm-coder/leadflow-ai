@@ -1,4 +1,6 @@
 import { applyCors, parseBody, readString, type ApiRequest, type ApiResponse } from './_lib/http.js'
+import { parseBusinessHours } from './_lib/business-hours.js'
+import { parsePriceList } from './_lib/guardrails.js'
 import { getServiceClient } from './_lib/supabase.js'
 import type { Tenant } from './_lib/types.js'
 
@@ -81,6 +83,35 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       if (body.system_prompt !== undefined) patch.system_prompt = body.system_prompt
       if (body.target_goal !== undefined) patch.target_goal = body.target_goal
       if (typeof body.is_active === 'boolean') patch.is_active = body.is_active
+      if (body.notification_phone !== undefined) patch.notification_phone = body.notification_phone
+      if (body.notification_email !== undefined) patch.notification_email = body.notification_email
+
+      if (body.business_hours !== undefined) {
+        const hours = body.business_hours === null ? null : parseBusinessHours(body.business_hours)
+        if (body.business_hours !== null && !hours) {
+          json(res, 400, {
+            error: 'Invalid business_hours: expected { days: [0-6], open: "HH:MM", close: "HH:MM", timezone }',
+          })
+          return
+        }
+        patch.business_hours = hours
+      }
+      if (body.price_list !== undefined) {
+        if (!Array.isArray(body.price_list)) {
+          json(res, 400, { error: 'price_list must be an array of { service, price | price_from | price_to }' })
+          return
+        }
+        patch.price_list = parsePriceList(body.price_list)
+      }
+      if (body.faq !== undefined) {
+        if (!Array.isArray(body.faq)) {
+          json(res, 400, { error: 'faq must be an array of { question, answer }' })
+          return
+        }
+        patch.faq = body.faq.filter(
+          (item) => typeof item?.question === 'string' && typeof item?.answer === 'string',
+        )
+      }
 
       if (Object.keys(patch).length === 0) {
         json(res, 400, { error: 'No fields to update' })

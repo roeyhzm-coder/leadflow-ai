@@ -67,9 +67,10 @@ create index if not exists tenants_whatsapp_phone_idx on public.tenants (whatsap
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
+-- Enabled with no policies here: nothing is reachable with the anon key. The
+-- auth.uid() tenant-membership policies live in
+-- supabase/migrations/20261019_enterprise_multitenant.sql (run it next).
 -- Dashboard traffic goes through /api with the service role (bypasses RLS).
--- Anon policies below are intentionally open for a first demo; lock them down
--- with auth.uid() tenant membership before going to production.
 -- ---------------------------------------------------------------------------
 
 alter table public.tenants enable row level security;
@@ -81,11 +82,6 @@ drop policy if exists "tenants_anon_all" on public.tenants;
 drop policy if exists "conversations_anon_all" on public.conversations;
 drop policy if exists "messages_anon_all" on public.messages;
 drop policy if exists "leads_anon_all" on public.leads;
-
-create policy "tenants_anon_all" on public.tenants for all using (true) with check (true);
-create policy "conversations_anon_all" on public.conversations for all using (true) with check (true);
-create policy "messages_anon_all" on public.messages for all using (true) with check (true);
-create policy "leads_anon_all" on public.leads for all using (true) with check (true);
 
 -- ---------------------------------------------------------------------------
 -- Seed — שקד אינסטלציה ושיפוצים (demo tenant)

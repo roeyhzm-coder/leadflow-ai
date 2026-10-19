@@ -3,6 +3,35 @@ export type MessageSender = 'customer' | 'bot' | 'human'
 export type MessageType = 'text' | 'audio'
 export type LeadStatus = 'new' | 'in_progress' | 'converted' | 'dismissed'
 
+/** tenants.business_hours. days use Date#getDay numbering (0 = Sunday). */
+export type BusinessHours = {
+  days: number[]
+  open: string
+  close: string
+  timezone: string
+  /** Optional custom after-hours greeting; a default Hebrew one is used otherwise. */
+  night_message?: string
+}
+
+/** One tenants.price_list entry. The bot may quote only these amounts. */
+export type PriceListItem = {
+  service: string
+  price?: number
+  price_from?: number
+  price_to?: number
+  unit?: string
+  notes?: string
+}
+
+export type FaqItem = {
+  question: string
+  answer: string
+}
+
+/**
+ * Columns marked optional were added by supabase/migrations/20261019_enterprise_multitenant.sql;
+ * rows read before that migration runs lack them and every consumer falls back to defaults.
+ */
 export type Tenant = {
   id: string
   created_at: string
@@ -13,6 +42,11 @@ export type Tenant = {
   system_prompt: string | null
   target_goal: string | null
   is_active: boolean
+  business_hours?: BusinessHours | null
+  price_list?: PriceListItem[] | null
+  faq?: FaqItem[] | null
+  notification_phone?: string | null
+  notification_email?: string | null
 }
 
 export type Conversation = {
@@ -57,9 +91,18 @@ export type CapturedLead = {
   notes: string
 }
 
+/**
+ * ai: model reply sent as-is. guarded: model reply replaced by the output guard.
+ * fallback: model failed or returned unusable output; the canned fallback was used.
+ */
+export type AgentOutcome = 'ai' | 'guarded' | 'fallback'
+
 export type AgentResult = {
   reply: string
   lead: CapturedLead | null
+  outcome: AgentOutcome
+  /** Why the guard or fallback kicked in; absent when outcome is 'ai'. */
+  reason?: string
 }
 
 export type GreenApiSenderData = {

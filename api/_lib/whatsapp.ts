@@ -32,17 +32,34 @@ export function resolveGreenApiHost(
   return candidate === expected ? candidate : expected
 }
 
+/**
+ * Per-tenant Green API tokens from GREEN_API_TOKENS, a JSON object keyed by instance id
+ * ({"710722751571":"token",...}). Tokens stay in server env, never in the tenants table.
+ */
+function instanceToken(instanceId: string | undefined): string {
+  if (!instanceId) return ''
+  const raw = process.env.GREEN_API_TOKENS?.trim()
+  if (!raw) return ''
+  try {
+    const map = JSON.parse(raw) as unknown
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return ''
+    const token = (map as Record<string, unknown>)[instanceId]
+    return typeof token === 'string' ? token.trim() : ''
+  } catch {
+    console.error('GREEN_API_TOKENS is not valid JSON; falling back to WHATSAPP_API_TOKEN')
+    return ''
+  }
+}
+
 function apiRoot(instanceId?: string): { base: string; token: string } {
   const base = resolveGreenApiHost(
     firstEnv('WHATSAPP_API_URL', 'GREEN_API_URL', 'VITE_WHATSAPP_API_URL') ||
       undefined,
     instanceId,
   )
-  const token = firstEnv(
-    'WHATSAPP_API_TOKEN',
-    'GREEN_API_TOKEN',
-    'VITE_WHATSAPP_API_TOKEN',
-  )
+  const token =
+    instanceToken(instanceId) ||
+    firstEnv('WHATSAPP_API_TOKEN', 'GREEN_API_TOKEN', 'VITE_WHATSAPP_API_TOKEN')
   if (!token) {
     throw new Error('Missing WhatsApp configuration. Set WHATSAPP_API_TOKEN.')
   }
