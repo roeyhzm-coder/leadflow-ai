@@ -18,5 +18,5 @@
     "esModuleInterop": true,
     "isolatedModules": true
   },
-  "include": ["scripts/_lib", "scripts/test-guardrails.ts", "scripts/test-lead-capture.ts", "scripts/bundle-sql.ts", "scripts/test-api-auth.ts", "scripts/verify-migration.ts"]
+  "include": ["scripts/_lib", "scripts/test-guardrails.ts", "scripts/test-lead-capture.ts", "scripts/bundle-sql.ts", "scripts/test-api-auth.ts", "scripts/verify-migration.ts", "scripts/verify-dashboard-login.ts"]
 }
