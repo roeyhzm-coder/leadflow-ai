@@ -11,7 +11,6 @@ import {
   consumeRateLimit,
   PAID_API_RATE_LIMIT,
   PAID_API_WINDOW_SECONDS,
-  RateLimiterUnavailableError,
   type RateLimitResult,
 } from './_lib/rate-limit.js'
 import { getServiceClient, normalizePhone, phonesMatch } from './_lib/supabase.js'
@@ -518,13 +517,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       ...(sendError ? { send_error: sendError } : {}),
     })
   } catch (error) {
-    if (error instanceof RateLimiterUnavailableError) {
-      // Fail closed: never call Gemini/WhatsApp when spend cannot be bounded.
-      console.error('rate limiter unavailable', error)
-      res.setHeader('Retry-After', String(PAID_API_WINDOW_SECONDS))
-      json(res, 503, { ok: false, error: 'Service temporarily unavailable' })
-      return
-    }
     console.error('webhook failed', error)
     json(res, 500, {
       ok: false,

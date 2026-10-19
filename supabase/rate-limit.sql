@@ -1,7 +1,8 @@
 -- ---------------------------------------------------------------------------
 -- Paid-API rate limiter (Gemini / WhatsApp). Idempotent — safe to re-run.
--- Run in the Supabase SQL editor BEFORE deploying the API that calls it:
--- api/_lib/rate-limit.ts fails closed (HTTP 503, no paid call) if it is missing.
+-- Run in the Supabase SQL editor BEFORE deploying the API that calls it.
+-- If it is missing, api/_lib/rate-limit.ts falls back to a per-instance in-memory
+-- limiter, which serverless cold starts and parallel instances weaken.
 -- ---------------------------------------------------------------------------
 
 create table if not exists public.api_rate_limits (
