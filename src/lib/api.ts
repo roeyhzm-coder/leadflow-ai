@@ -1,237 +1,179 @@
-import { DEMO_TENANT_ID } from './demo-data.ts'
 import {
   mergeDemoIntoLocalStorage,
   readLocalStore,
   saveLocalLeads,
   saveLocalTenant,
 } from './storage.ts'
-import { getSupabase } from './supabase.ts'
 import type {
   Conversation,
   Lead,
   LeadStatus,
   Message,
   Tenant,
+  TenantRole,
   TenantSettingsPatch,
 } from './types.ts'
 
-export type DataSource = 'api' | 'supabase' | 'local'
+export type DataSource = 'api' | 'local'
 
 export type DashboardPayload = {
   tenant: Tenant
+  tenants: Tenant[]
+  role: TenantRole
   leads: Lead[]
   conversations: Conversation[]
   source: DataSource
 }
 
+/** Data access used by the dashboard: authenticated /api calls, or local demo data. */
+export type DashboardApi = {
+  /** Null when the signed-in user is not a member of any tenant. */
+  load(tenantId?: string): Promise<DashboardPayload | null>
+  loadMessages(conversationId: string): Promise<Message[]>
+  updateLeadStatus(id: string, status: LeadStatus): Promise<Lead>
+  updateTenantSettings(tenant: Tenant, patch: TenantSettingsPatch): Promise<Tenant>
+}
+
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 async function parseJson(response: Response): Promise<unknown> {
   const text = await response.text()
   if (!text) return null
-  return JSON.parse(text) as unknown
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return null
+  }
 }
 
-async function getJson(path: string): Promise<unknown | null> {
-  const response = await fetch(path)
-  if (!response.ok) return null
-  return parseJson(response)
+function errorMessage(body: unknown): string | null {
+  if (body && typeof body === 'object' && 'error' in body) {
+    const value = (body as { error: unknown }).error
+    if (typeof value === 'string') return value
+  }
+  return null
 }
 
-async function sendJson(path: string, method: string, body: unknown): Promise<unknown | null> {
-  const response = await fetch(path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) return null
-  return parseJson(response)
+function field<T>(body: unknown, key: string): T | undefined {
+  if (!body || typeof body !== 'object') return undefined
+  return (body as Record<string, unknown>)[key] as T | undefined
 }
 
-function asTenantList(value: unknown): Tenant[] {
-  if (!value || typeof value !== 'object') return []
-  const record = value as { tenants?: Tenant[]; tenant?: Tenant }
-  if (Array.isArray(record.tenants)) return record.tenants
-  if (record.tenant) return [record.tenant]
-  return []
-}
+/**
+ * Calls /api with the current Supabase access token. `getToken` returns a fresh
+ * (auto-refreshed) token, or null when signed out.
+ */
+export function createRemoteApi(getToken: () => Promise<string | null>): DashboardApi {
+  async function call(path: string, init: RequestInit = {}): Promise<unknown> {
+    const token = await getToken()
+    if (!token) throw new ApiError(401, 'Not signed in')
+    const response = await fetch(path, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...init.headers,
+      },
+    })
+    const body = await parseJson(response)
+    if (!response.ok) {
+      throw new ApiError(response.status, errorMessage(body) ?? `Request failed (${response.status})`)
+    }
+    return body
+  }
 
-function asLeadList(value: unknown): Lead[] {
-  if (!value || typeof value !== 'object') return []
-  const record = value as { leads?: Lead[]; lead?: Lead }
-  if (Array.isArray(record.leads)) return record.leads
-  if (record.lead) return [record.lead]
-  return []
-}
-
-function asConversationList(value: unknown): Conversation[] {
-  if (!value || typeof value !== 'object') return []
-  const record = value as { conversations?: Conversation[] }
-  return Array.isArray(record.conversations) ? record.conversations : []
-}
-
-function asMessageList(value: unknown): Message[] {
-  if (!value || typeof value !== 'object') return []
-  const record = value as { messages?: Message[] }
-  return Array.isArray(record.messages) ? record.messages : []
-}
-
-export function loadDashboardLocal(): DashboardPayload {
-  const merged = mergeDemoIntoLocalStorage()
   return {
-    tenant: merged.tenant,
-    leads: merged.leads,
-    conversations: merged.conversations,
-    source: 'local',
-  }
-}
+    async load(tenantId) {
+      const body = await call('/api/tenants')
+      const tenants = field<Tenant[]>(body, 'tenants') ?? []
+      const roles = field<Record<string, TenantRole>>(body, 'roles') ?? {}
+      const tenant = tenants.find((item) => item.id === tenantId) ?? tenants[0]
+      if (!tenant) return null
 
-export async function loadDashboard(): Promise<DashboardPayload> {
-  const local = loadDashboardLocal()
-
-  try {
-    const tenantsRaw = await getJson('/api/tenants')
-    const leadsRaw = await getJson(`/api/leads?tenant_id=${encodeURIComponent(DEMO_TENANT_ID)}`)
-    const conversationsRaw = await getJson(
-      `/api/leads?conversations=1&tenant_id=${encodeURIComponent(DEMO_TENANT_ID)}`,
-    )
-    const tenants = asTenantList(tenantsRaw)
-    const leads = asLeadList(leadsRaw)
-    const conversations = asConversationList(conversationsRaw)
-    const tenant = tenants.find((item) => item.id === DEMO_TENANT_ID) ?? tenants[0]
-    if (tenant) {
-      return { tenant, leads, conversations, source: 'api' }
-    }
-  } catch {
-    // Fall through to Supabase / local demo data.
-  }
-
-  const supabase = getSupabase()
-  if (supabase) {
-    try {
-      const [{ data: tenant }, { data: leads }, { data: conversations }] = await Promise.all([
-        supabase.from('tenants').select('*').eq('id', DEMO_TENANT_ID).maybeSingle(),
-        supabase
-          .from('leads')
-          .select('*')
-          .eq('tenant_id', DEMO_TENANT_ID)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('conversations')
-          .select('*')
-          .eq('tenant_id', DEMO_TENANT_ID)
-          .order('last_message_at', { ascending: false }),
+      const id = encodeURIComponent(tenant.id)
+      const [leadsBody, conversationsBody] = await Promise.all([
+        call(`/api/leads?tenant_id=${id}`),
+        call(`/api/leads?conversations=1&tenant_id=${id}`),
       ])
-      if (tenant) {
-        return {
-          tenant: tenant as Tenant,
-          leads: (leads as Lead[]) ?? [],
-          conversations: (conversations as Conversation[]) ?? [],
-          source: 'supabase',
-        }
+      return {
+        tenant,
+        tenants,
+        role: roles[tenant.id] ?? 'staff',
+        leads: field<Lead[]>(leadsBody, 'leads') ?? [],
+        conversations: field<Conversation[]>(conversationsBody, 'conversations') ?? [],
+        source: 'api',
       }
-    } catch {
-      // Fall through to local demo data.
-    }
-  }
+    },
 
-  return local
-}
+    async loadMessages(conversationId) {
+      const body = await call(`/api/leads?conversation_id=${encodeURIComponent(conversationId)}`)
+      return field<Message[]>(body, 'messages') ?? []
+    },
 
-export async function loadMessages(conversationId: string): Promise<Message[]> {
-  try {
-    const raw = await getJson(
-      `/api/leads?conversation_id=${encodeURIComponent(conversationId)}`,
-    )
-    const fromApi = asMessageList(raw)
-    if (fromApi.length > 0) return fromApi
-  } catch {
-    // Continue to fallbacks.
-  }
+    async updateLeadStatus(id, status) {
+      const body = await call('/api/leads', { method: 'PATCH', body: JSON.stringify({ id, status }) })
+      const lead = field<Lead>(body, 'lead')
+      if (!lead) throw new ApiError(500, 'Malformed response')
+      return lead
+    },
 
-  const supabase = getSupabase()
-  if (supabase) {
-    try {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
-      if (data && data.length > 0) return data as Message[]
-    } catch {
-      // Continue to local fallback.
-    }
-  }
-
-  return readLocalStore().messages.filter((item) => item.conversation_id === conversationId)
-}
-
-export async function updateLeadStatus(id: string, status: LeadStatus): Promise<Lead | null> {
-  const local = readLocalStore()
-  const nextLeads = local.leads.map((lead) => (lead.id === id ? { ...lead, status } : lead))
-  saveLocalLeads(nextLeads)
-
-  try {
-    const raw = await sendJson('/api/leads', 'PATCH', { id, status })
-    if (raw && typeof raw === 'object' && 'lead' in raw) {
-      return (raw as { lead: Lead }).lead
-    }
-  } catch {
-    // Try Supabase next.
-  }
-
-  const supabase = getSupabase()
-  if (supabase) {
-    try {
-      const { data } = await supabase.from('leads').update({ status }).eq('id', id).select('*').single()
-      if (data) return data as Lead
-    } catch {
-      // Keep local copy.
-    }
-  }
-
-  return nextLeads.find((lead) => lead.id === id) ?? null
-}
-
-export async function updateTenantSettings(
-  tenant: Tenant,
-  patch: TenantSettingsPatch,
-): Promise<Tenant> {
-  const next: Tenant = {
-    ...tenant,
-    business_name: patch.business_name,
-    system_prompt: patch.system_prompt,
-    owner_phone: patch.owner_phone,
-    target_goal: patch.target_goal ?? tenant.target_goal,
-  }
-  saveLocalTenant(next)
-
-  try {
-    const raw = await sendJson('/api/tenants', 'PATCH', { id: tenant.id, ...patch })
-    if (raw && typeof raw === 'object' && 'tenant' in raw) {
-      const saved = (raw as { tenant: Tenant }).tenant
-      saveLocalTenant(saved)
+    async updateTenantSettings(tenant, patch) {
+      const body = await call('/api/tenants', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: tenant.id, ...patch }),
+      })
+      const saved = field<Tenant>(body, 'tenant')
+      if (!saved) throw new ApiError(500, 'Malformed response')
       return saved
-    }
-  } catch {
-    // Try Supabase next.
+    },
   }
+}
 
-  const supabase = getSupabase()
-  if (supabase) {
-    try {
-      const { data } = await supabase
-        .from('tenants')
-        .update(patch)
-        .eq('id', tenant.id)
-        .select('*')
-        .single()
-      if (data) {
-        saveLocalTenant(data as Tenant)
-        return data as Tenant
+/** Demo mode for when Supabase is not configured: browser-local sample data only. */
+export function createLocalApi(): DashboardApi {
+  return {
+    async load() {
+      const merged = mergeDemoIntoLocalStorage()
+      return {
+        tenant: merged.tenant,
+        tenants: [merged.tenant],
+        role: 'owner',
+        leads: merged.leads,
+        conversations: merged.conversations,
+        source: 'local',
       }
-    } catch {
-      // Keep local copy.
-    }
-  }
+    },
 
-  return next
+    async loadMessages(conversationId) {
+      return readLocalStore().messages.filter((item) => item.conversation_id === conversationId)
+    },
+
+    async updateLeadStatus(id, status) {
+      const leads = readLocalStore().leads.map((lead) => (lead.id === id ? { ...lead, status } : lead))
+      saveLocalLeads(leads)
+      const lead = leads.find((item) => item.id === id)
+      if (!lead) throw new ApiError(404, 'Lead not found')
+      return lead
+    },
+
+    async updateTenantSettings(tenant, patch) {
+      const next: Tenant = {
+        ...tenant,
+        business_name: patch.business_name,
+        system_prompt: patch.system_prompt,
+        owner_phone: patch.owner_phone,
+        target_goal: patch.target_goal ?? tenant.target_goal,
+      }
+      saveLocalTenant(next)
+      return next
+    },
+  }
 }

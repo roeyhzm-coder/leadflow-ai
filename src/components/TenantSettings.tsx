@@ -5,12 +5,15 @@ import type { Tenant, TenantSettingsPatch } from '../lib/types.ts'
 
 type TenantSettingsProps = {
   tenant: Tenant
+  /** Staff members can view but not change settings (owner-only on the API). */
+  readOnly: boolean
   saving: boolean
   saved: boolean
+  error: string | null
   onSave: (patch: TenantSettingsPatch) => Promise<void>
 }
 
-export function TenantSettings({ tenant, saving, saved, onSave }: TenantSettingsProps) {
+export function TenantSettings({ tenant, readOnly, saving, saved, error, onSave }: TenantSettingsProps) {
   const [businessName, setBusinessName] = useState(tenant.business_name)
   const [ownerPhone, setOwnerPhone] = useState(tenant.owner_phone ?? '')
   const [systemPrompt, setSystemPrompt] = useState(tenant.system_prompt ?? '')
@@ -25,6 +28,7 @@ export function TenantSettings({ tenant, saving, saved, onSave }: TenantSettings
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    if (readOnly || saving) return
     await onSave({
       business_name: businessName.trim(),
       owner_phone: ownerPhone.trim(),
@@ -43,7 +47,14 @@ export function TenantSettings({ tenant, saving, saved, onSave }: TenantSettings
         <p className="mt-1 text-sm text-slate-500">
           הפרומפט והטלפון להתראות שולטים בהתנהגות הסוכן בוואטסאפ.
         </p>
+        {readOnly ? (
+          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            צפייה בלבד - רק בעלי העסק יכולים לשנות הגדרות.
+          </p>
+        ) : null}
       </div>
+
+      <fieldset disabled={readOnly} className="space-y-5">
 
       <label className="block space-y-1.5">
         <span className="text-sm font-semibold text-slate-700">שם העסק</span>
@@ -59,6 +70,8 @@ export function TenantSettings({ tenant, saving, saved, onSave }: TenantSettings
         <span className="text-sm font-semibold text-slate-700">טלפון להתראות (בעלים)</span>
         <input
           dir="ltr"
+          required
+          inputMode="tel"
           value={ownerPhone}
           onChange={(event) => setOwnerPhone(event.target.value)}
           placeholder="97250..."
@@ -86,10 +99,18 @@ export function TenantSettings({ tenant, saving, saved, onSave }: TenantSettings
         />
       </label>
 
+      </fieldset>
+
+      {error ? (
+        <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </p>
+      ) : null}
+
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || readOnly}
           className="inline-flex items-center gap-2 rounded-xl bg-[#25d366] px-5 py-2.5 text-sm font-bold text-[#10261f] transition hover:bg-[#1fbe5a] disabled:opacity-60"
         >
           {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}

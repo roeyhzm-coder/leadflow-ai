@@ -12,8 +12,8 @@ create table if not exists public.tenants (
   created_at timestamptz not null default now(),
   business_name text not null,
   whatsapp_instance_id text,
-  whatsapp_phone text,
-  owner_phone text,
+  whatsapp_phone text not null,
+  owner_phone text not null,
   system_prompt text,
   target_goal text,
   is_active boolean not null default true

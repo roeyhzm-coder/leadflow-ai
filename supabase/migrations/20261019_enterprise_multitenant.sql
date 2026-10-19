@@ -40,6 +40,61 @@ begin
   end if;
 end $$;
 
+-- Phones: production already has whatsapp_phone / owner_phone NOT NULL; schema.sql
+-- installs did not. Normalize to digits-only international format (05XXXXXXXX ->
+-- 9725XXXXXXXX, the same rule as normalizePhone in api/_lib/supabase.ts), then add
+-- NOT NULL and format checks only when every row conforms; otherwise report and skip,
+-- because a check on non-conforming rows would make every later UPDATE of them fail.
+update public.tenants t
+set whatsapp_phone = n.whatsapp_phone,
+    owner_phone = n.owner_phone
+from (
+  select
+    id,
+    case
+      when whatsapp_phone is null then null
+      when regexp_replace(whatsapp_phone, '\D', '', 'g') ~ '^0[0-9]{9}$'
+        then '972' || substr(regexp_replace(whatsapp_phone, '\D', '', 'g'), 2)
+      else regexp_replace(whatsapp_phone, '\D', '', 'g')
+    end as whatsapp_phone,
+    case
+      when owner_phone is null then null
+      when regexp_replace(owner_phone, '\D', '', 'g') ~ '^0[0-9]{9}$'
+        then '972' || substr(regexp_replace(owner_phone, '\D', '', 'g'), 2)
+      else regexp_replace(owner_phone, '\D', '', 'g')
+    end as owner_phone
+  from public.tenants
+) n
+where t.id = n.id
+  and (t.whatsapp_phone is distinct from n.whatsapp_phone or t.owner_phone is distinct from n.owner_phone);
+
+do $$
+begin
+  if exists (select 1 from public.tenants where whatsapp_phone is null or owner_phone is null) then
+    raise notice 'Some tenants lack whatsapp_phone/owner_phone; fill them and re-run to add NOT NULL.';
+  else
+    alter table public.tenants
+      alter column whatsapp_phone set not null,
+      alter column owner_phone set not null;
+  end if;
+
+  if exists (
+    select 1 from public.tenants
+    where whatsapp_phone !~ '^[0-9]{9,15}$' or owner_phone !~ '^[0-9]{9,15}$'
+  ) then
+    raise notice 'Some tenant phones are not 9-15 digits; fix them and re-run to add the format checks.';
+  else
+    if not exists (select 1 from pg_constraint where conname = 'tenants_whatsapp_phone_format') then
+      alter table public.tenants add constraint tenants_whatsapp_phone_format
+        check (whatsapp_phone ~ '^[0-9]{9,15}$');
+    end if;
+    if not exists (select 1 from pg_constraint where conname = 'tenants_owner_phone_format') then
+      alter table public.tenants add constraint tenants_owner_phone_format
+        check (owner_phone ~ '^[0-9]{9,15}$');
+    end if;
+  end if;
+end $$;
+
 -- One tenant per Green API instance, so webhook routing is unambiguous.
 do $$
 begin

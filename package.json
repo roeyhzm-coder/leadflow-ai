@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "tsx scripts/test-guardrails.ts && tsx scripts/test-lead-capture.ts",
+    "test": "tsx scripts/test-guardrails.ts && tsx scripts/test-lead-capture.ts && tsx scripts/test-api-auth.ts",
+    "sql:bundle": "tsx scripts/bundle-sql.ts",
     "test:live": "tsx scripts/test-guardrails.ts --live && tsx scripts/test-lead-capture.ts --live",
     "preview": "vite preview"
   },

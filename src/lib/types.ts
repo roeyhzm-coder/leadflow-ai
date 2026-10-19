@@ -2,6 +2,8 @@ export type ConversationStatus = 'active' | 'muted_by_human' | 'closed'
 export type MessageSender = 'customer' | 'bot' | 'human'
 export type MessageType = 'text' | 'audio'
 export type LeadStatus = 'new' | 'in_progress' | 'converted' | 'dismissed'
+/** 'admin' = platform admin viewing a tenant they are not a member of. */
+export type TenantRole = 'owner' | 'staff' | 'admin'
 
 export type Tenant = {
   id: string

@@ -7,11 +7,20 @@ export const isSupabaseConfigured = Boolean(url && anonKey)
 
 let client: SupabaseClient | null = null
 
+/**
+ * Browser client, used only for Supabase Auth. Data is read through /api with the
+ * session's access token; RLS blocks direct anon-key table access.
+ */
 export function getSupabase(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null
   if (!client) {
     client = createClient(url, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+      },
     })
   }
   return client
