@@ -54,11 +54,17 @@ function instanceUrl(instanceId: string, method: string): string {
   return `${base}/waInstance${instanceId}/${method}/${token}`
 }
 
+export type SentWhatsAppMessage = {
+  status: number
+  /** Green API message id; stored on bot messages so an echoed webhook of it is dropped. */
+  idMessage: string
+}
+
 export async function sendWhatsAppText(
   tenant: Tenant,
   toPhone: string,
   message: string,
-): Promise<void> {
+): Promise<SentWhatsAppMessage> {
   const instanceId = tenant.whatsapp_instance_id
   if (!instanceId) {
     throw new Error('Tenant is missing whatsapp_instance_id')
@@ -76,6 +82,12 @@ export async function sendWhatsAppText(
   if (!response.ok) {
     const detail = await response.text()
     throw new Error(`WhatsApp send failed (${response.status}): ${detail}`)
+  }
+
+  const body = (await response.json().catch(() => ({}))) as { idMessage?: unknown }
+  return {
+    status: response.status,
+    idMessage: typeof body.idMessage === 'string' ? body.idMessage : '',
   }
 }
 
@@ -166,6 +178,26 @@ export function isAllowedTestSender(...phones: Array<string | null | undefined>)
     const normalized = normalizePhone(phone)
     return normalized.length > 0 && allowed.has(normalized)
   })
+}
+
+/** True only when the phone is listed by number in ALLOWED_TEST_NUMBERS (a "*" or empty list never counts). */
+export function isExplicitTestNumber(phone: string | null | undefined): boolean {
+  const normalized = normalizePhone(phone)
+  return normalized.length > 0 && (allowedTestNumbers()?.has(normalized) ?? false)
+}
+
+/**
+ * A message the instance owner typed into their own "message yourself" chat.
+ * For outgoing webhooks senderData.sender is the instance's own number, so the
+ * chat is self when it equals chatId. Only honored for explicitly listed test
+ * numbers. Bot replies arrive as outgoingAPIMessageReceived and never match.
+ */
+export function isSelfChatTest(payload: GreenApiWebhook): boolean {
+  const type = payload.typeWebhook
+  if (type !== 'outgoingMessageReceived' && type !== 'incomingMessageReceived') return false
+  const chat = normalizePhone(payload.senderData?.chatId)
+  const sender = normalizePhone(payload.senderData?.sender)
+  return chat.length > 0 && chat === sender && isExplicitTestNumber(chat)
 }
 
 export function isFromOwner(tenant: Tenant, senderPhone: string): boolean {

@@ -30,6 +30,7 @@ import {
   isFromOwner,
   isAllowedTestSender,
   isIncomingCustomerMessage,
+  isSelfChatTest,
   recipientPhone,
   resolveChatPhone,
   resolveCustomerName,
@@ -282,6 +283,29 @@ async function notifyOwner(tenant: Tenant, body: string): Promise<void> {
   }
 }
 
+/**
+ * Sends a bot reply, then stores it with the Green API idMessage so any webhook
+ * echo of this send is dropped by alreadyProcessed. Returns the send error, if any.
+ */
+async function sendBotReply(
+  tenant: Tenant,
+  conversationId: string,
+  chatPhone: string,
+  text: string,
+  kind: 'gemini' | 'human_handoff',
+): Promise<string | null> {
+  let sendError: string | null = null
+  let idMessage: string | null = null
+  try {
+    idMessage = (await sendWhatsAppText(tenant, chatPhone, text)).idMessage || null
+  } catch (error) {
+    sendError = error instanceof Error ? error.message : 'WhatsApp send failed'
+    console.error(`WhatsApp send failed (${kind})`, error)
+  }
+  await insertMessage(conversationId, 'bot', 'text', text, { kind, idMessage })
+  return sendError
+}
+
 async function maybeDownloadAudio(
   payload: GreenApiWebhook,
 ): Promise<{ data: string; mimeType: string } | undefined> {
@@ -359,7 +383,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       return
     }
 
-    if (typeWebhook === 'incomingMessageReceived' && isSelfMessage(tenant, payload, senderPhone)) {
+    // Owner testing the bot from their own "message yourself" chat (see isSelfChatTest).
+    const selfChatTest = isSelfChatTest(payload)
+
+    if (
+      !selfChatTest &&
+      typeWebhook === 'incomingMessageReceived' &&
+      isSelfMessage(tenant, payload, senderPhone)
+    ) {
       json(res, 200, { ok: true, ignored: 'self_message' })
       return
     }
@@ -374,7 +405,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
     const incomingText = extractIncomingText(payload)
     const audio = isAudioMessage(payload)
 
-    if (typeWebhook === 'outgoingMessageReceived' || isFromOwner(tenant, senderPhone)) {
+    if (
+      !selfChatTest &&
+      (typeWebhook === 'outgoingMessageReceived' || isFromOwner(tenant, senderPhone))
+    ) {
       await insertMessage(
         conversation.id,
         'human',
@@ -387,7 +421,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       return
     }
 
-    if (!isIncomingCustomerMessage(typeWebhook)) {
+    if (!selfChatTest && !isIncomingCustomerMessage(typeWebhook)) {
       json(res, 200, { ok: true, ignored: typeWebhook })
       return
     }
@@ -412,7 +446,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       .single()
     const current = (fresh as Conversation | null) ?? latest
 
-    if (isMuted(current)) {
+    // In a self-chat test the "owner takeover" mute was set by the tester's own
+    // earlier messages, so only explicit handoff/closed statuses apply.
+    if (selfChatTest ? isMuted({ ...current, muted_until: null }) : isMuted(current)) {
       json(res, 200, { ok: true, ignored: 'muted' })
       return
     }
@@ -434,16 +470,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       await muteForHumanRequest(conversation.id)
       const ack =
         'הבנתי, מעביר אתכם לנציג אנושי עכשיו. מישהו מהצוות יחזור אליכם כאן בהקדם.'
-      await insertMessage(conversation.id, 'bot', 'text', ack, {
-        kind: 'human_handoff',
-      })
-      let sendError: string | null = null
-      try {
-        await sendWhatsAppText(tenant, chatPhone, ack)
-      } catch (error) {
-        sendError = error instanceof Error ? error.message : 'WhatsApp send failed'
-        console.error('WhatsApp send failed during human handoff', error)
-      }
+      const sendError = await sendBotReply(tenant, conversation.id, chatPhone, ack, 'human_handoff')
       await notifyOwner(
         tenant,
         `🙋 לקוח ביקש נציג אנושי\nעסק: ${tenant.business_name}\nשם: ${senderName || 'לא ידוע'}\nטלפון: ${chatPhone}\nהודעה: ${incomingText}`,
@@ -474,17 +501,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
       audio: audioPayload,
     })
 
-    await insertMessage(conversation.id, 'bot', 'text', agent.reply, {
-      kind: 'gemini',
-    })
-
-    let sendError: string | null = null
-    try {
-      await sendWhatsAppText(tenant, chatPhone, agent.reply)
-    } catch (error) {
-      sendError = error instanceof Error ? error.message : 'WhatsApp send failed'
-      console.error('WhatsApp send failed after bot reply', error)
-    }
+    const sendError = await sendBotReply(tenant, conversation.id, chatPhone, agent.reply, 'gemini')
 
     if (agent.lead) {
       await upsertLead(tenant, conversation, agent.lead)
