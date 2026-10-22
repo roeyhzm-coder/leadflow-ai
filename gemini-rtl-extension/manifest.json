@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini RTL Enforcer",
+  "version": "1.0",
+  "description": "Forces Right-to-Left (RTL) layout on gemini.google.com and re-applies it if the page resets dir.",
+  "content_scripts": [
+    {
+      "matches": ["*://gemini.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
